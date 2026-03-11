@@ -25,23 +25,36 @@ extern uint32_t lastProducerTick[]; /**< Array of producer tick counters */
 extern bool g_producerSaveRequested;
 extern bool g_producerLoadRequested;
 
+typedef enum {
+    PRODUCER_KIND_NONE = 0,     // Not a producer
+    PRODUCER_KIND_SWITCH_STATE, // ON/OFF/MOMENTARY
+    PRODUCER_KIND_LEVEL,        // Brightness, duty cycle, analog level
+    PRODUCER_KIND_SENSOR,       // ADC, temperature, etc.
+    PRODUCER_KIND_EVENT         // Button press, edge-triggered events
+} producer_kind_t;
+
 
 /* ============================================================================
  *  PRODUCER CONFIG API
  * ========================================================================== */
 
 void handleProducerCfg(const can_msg_t *msg);
-void handleProducerPurge(const can_msg_t *msg);
-void handleProducerDefaults(const can_msg_t *msg);
-void handleProducerApply(void);
+void handleProducerPurge(void);
+void handleProducerDefaults(void);
+void handleProducerRemove(const uint8_t sub_idx);
 void handleReqProducerCfg(const can_msg_t *msg);
+void producerDelete(const uint8_t sub_idx);
+void producerEnable(const uint8_t sub_idx);
+void producerDisable(const uint8_t sub_idx);
+void producerToggle(const uint8_t sub_idx);
+void requestProducerSave(void);
+void requestProducerLoad(void);
 
-/* ============================================================================
- *  NVS LOAD/SAVE wrappers - use flags for signaling
- * ========================================================================== */
-
-void loadProducerCfgFromNVS(void);
-void saveProducerCfgToNVS(void);
+// Firmware-provided accessors
+producer_t*     producerGetState(const uint8_t sub_idx);
+producer_cfg_t* producerGetConfig(const uint8_t sub_idx);
+uint8_t         producerGetFlags(const uint8_t sub_idx);
+void            producerSetFlags(const uint8_t sub_idx, const uint8_t value);
 
 /* ============================================================================
  *  END C LINKAGE

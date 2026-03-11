@@ -8,8 +8,8 @@ extern "C" {
 
 /** Producer tick counter array */
 uint32_t lastProducerTick[MAX_SUB_MODULES] = {0}; 
-extern bool g_producerSaveRequested = false;
-extern bool g_producerLoadRequested = false;
+bool g_producerSaveRequested = false;
+bool g_producerLoadRequested = false;
 
 /* ===== FUNCTIONS ===== */
 
@@ -17,54 +17,111 @@ extern bool g_producerLoadRequested = false;
  *  PRODUCER CONFIG HANDLERS
  * ========================================================================== */
 
-void handleProducerCfg(const can_msg_t *msg, const subModule_t *sub)
+void handleProducerCfg(const can_msg_t *msg)
 {
-    if (msg->data_length_code < CFG_PRODUCER_CFG_DLC)
+    if (msg->data_length_code < CFG_PRODUCER_CFG_DLC) /* malformed message, bail out*/
         return;
 
-    uint8_t idx = msg->data[4];
+    uint8_t idx = msg->data[MSG_DATA_4]; /* data byte 4 is the sub-mod index value */
     if (idx >= MAX_SUB_MODULES)
         return;
+    
+    /** Load data from the main firmware state */
+    producer_t *sub    = producerGetState(idx);
+    producer_cfg_t *cfg = producerGetConfig(idx);
+ 
+    cfg->rate_hz  = msg->data[MSG_DATA_5]; // g_producerCfg[idx].rate_hz  = msg->data[5];
+    cfg->flags    = msg->data[MSG_DATA_6]; // g_producerCfg[idx].flags    = msg->data[6];
+    cfg->reserved = msg->data[MSG_DATA_7]; // reserved, currently unused
 
-    sub->producer_cfg.rate_hz  = msg->data[5]; // g_producerCfg[idx].rate_hz  = msg->data[5];
-    sub->producer_cfg.flags    = msg->data[6]; // g_producerCfg[idx].flags    = msg->data[6];
-    sub->producer_cfg.reserved = msg->data[7]; // g_producerCfg[idx].reserved = msg->data[7];
+    /** Request the firmware save data to NVS */
+    g_producerSaveRequested = true;
 
-    printf("ProducerCfg: sub %u rate %u flags 0x%02X\n",
-           idx,
-           sub.producer_cfg.rate_hz,
-           sub.producer_cfg.flags);
 }
 
-void handleProducerPurge(const can_msg_t *msg, const subModule_t *sub)
+void handleProducerPurge(void)
 {
-    (void)msg;
-    sub->producer.kind = PRODUCER_KIND_NONE; /* reset producer kind */
+    for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
+        producer_cfg_t *cfg = producerGetConfig(i);
+        memset(cfg, 0, sizeof(producer_cfg_t));
+    }
+    g_producerSaveRequested = true;
 }
 
-void handleProducerDefaults(const can_msg_t *msg, const subModule_t *sub)
+void handleProducerDefaults(void)
 {
-    (void)msg;
-    // TODO: Read "kind" from message or nvs, reset producer kind?
-    // memset(g_producerCfg, 0, sizeof(g_producerCfg));
+    for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
+        producer_cfg_t *cfg = producerGetConfig(i);
+        cfg->rate_hz = 0;
+        cfg->flags   = 0;
+        cfg->reserved = 0;
+    }
+    g_producerSaveRequested = true;
 }
 
-void handleProducerApply(void)
+void producerDelete(const uint8_t sub_idx)
 {
-    /* No-op: config is live immediately */
+    if (sub_idx >= MAX_SUB_MODULES)
+        return;
+
+    // Clear producer personality
+    producer_t *p = producerGetState(sub_idx);
+    memset(p, 0, sizeof(producer_t));
+
+    // Clear producer configuration
+    producer_cfg_t *cfg = producerGetConfig(sub_idx);
+    memset(cfg, 0, sizeof(producer_cfg_t));
+
+    // Clear submodule flags related to producer behavior
+    producerSetFlags(sub_idx, 0);
+
+    // Ask firmware to persist the change
+    g_producerSaveRequested = true;
 }
 
-void handleReqProducerCfg(const can_msg_t *msg, const subModule_t *sub)
+void producerEnable(const uint8_t sub_idx)
 {
-    (void)msg;
-    /* The caller (ESP32) will send RESP_PRODUCER_CFG_ID frames.
-       This module is platform-agnostic, so we do nothing here. */
+    if (sub_idx >= MAX_SUB_MODULES)
+        return;
+
+    producer_cfg_t *cfg = producerGetConfig(sub_idx);
+    cfg->flags |= PRODUCER_FLAG_ENABLED;
+
+    g_producerSaveRequested = true;
 }
 
-void handleProducerWriteNVS(void)
+void producerDisable(const uint8_t sub_idx)
 {
-    // TODO: create function in main.cpp
-    node_saveProducerCfgNvs();
+    if (sub_idx >= MAX_SUB_MODULES)
+        return;
+
+    producer_cfg_t *cfg = producerGetConfig(sub_idx);
+    cfg->flags &= ~PRODUCER_FLAG_ENABLED;
+
+    g_producerSaveRequested = true;
+}
+
+void producerToggle(const uint8_t sub_idx)
+{
+    if (sub_idx >= MAX_SUB_MODULES)
+        return;
+
+    producer_cfg_t *cfg = producerGetConfig(sub_idx);
+    cfg->flags ^= PRODUCER_FLAG_ENABLED;
+
+    g_producerSaveRequested = true;
+}
+
+void requestProducerLoad(void)
+{
+    /** set a flag and the main loop will handle the producer load request */
+    g_producerLoadRequested = true; 
+}
+
+void requestProducerSave(void)
+{
+    /** set a flag and the main loop will handle the producer save request */
+    g_producerSaveRequested = true;
 }
 
 #ifdef __cplusplus
