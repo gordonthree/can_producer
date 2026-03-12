@@ -33,10 +33,18 @@ typedef struct nodeInfo_t nodeInfo_t;
 extern uint32_t lastProducerTick[]; /**< Array of producer tick counters */
 extern bool g_producerSaveRequested;
 extern bool g_producerLoadRequested;
+extern bool g_producerMessageWaiting;
 
 /* ============================================================================
  *  ENUMS
  * ========================================================================== */
+
+typedef struct {
+    bool     ready;      /**< True if a message should be published */
+    uint8_t  sub_idx;    /**< Which submodule produced the value */
+    uint32_t value;      /**< The value to publish */
+} producer_event_t;
+
 /**
  * @brief Value source selector for producerReadValue().
  */
@@ -116,7 +124,7 @@ void nodeIngestValue(nodeInfo_t *node,
  *  PRODUCER TICK (publishing logic)
  * ========================================================================== */
 
-void producerTick(const uint32_t ts); /**< Publish producer values based on tick */
+producer_event_t producerTick(const uint32_t ts); /**< Publish producer values based on tick */
 
 
 /* ============================================================================

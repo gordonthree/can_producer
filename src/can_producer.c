@@ -26,7 +26,7 @@ void handleProducerCfg(const can_msg_t *msg)
     if (idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = producerGetSubModule(idx);
+    subModule_t *sub = nodeGetSubmodule(idx);
     if (!sub) return;
 
     runTime_t *rt = &sub->runTime;
@@ -68,7 +68,7 @@ void producerDefaultSingle(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = producerGetSubModule(sub_idx);
+    subModule_t *sub = nodeGetSubmodule(sub_idx);
     if (!sub) return;
 
     runTime_t *rt = &sub->runTime;
@@ -94,7 +94,7 @@ void producerPurgeAll(void)
 {
     for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
 
-        subModule_t *sub = producerGetSubModule(i);
+        subModule_t *sub = nodeGetSubmodule(i);
         if (!sub) continue;
 
         runTime_t *rt = &sub->runTime;
@@ -116,7 +116,7 @@ void producerPurgeAll(void)
  */
 void producerDelete(const uint8_t sub_idx)
 {
-    subModule_t *sub = producerGetSubModule(sub_idx);
+    subModule_t *sub = nodeGetSubmodule(sub_idx);
     if (!sub) return;
 
     runTime_t *rt = &sub->runTime;
@@ -141,7 +141,7 @@ void producerEnable(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = producerGetSubModule(sub_idx);
+    subModule_t *sub = nodeGetSubmodule(sub_idx);
     sub->producer_flags |= PRODUCER_FLAG_ENABLED;
 
     g_producerSaveRequested = true;
@@ -160,7 +160,7 @@ void producerDisable(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = producerGetSubModule(sub_idx);
+    subModule_t *sub = nodeGetSubmodule(sub_idx);
     sub->producer_flags &= ~PRODUCER_FLAG_ENABLED;
 
     g_producerSaveRequested = true;
@@ -179,7 +179,7 @@ void producerToggle(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = producerGetSubModule(sub_idx);
+    subModule_t *sub = nodeGetSubmodule(sub_idx);
     sub->producer_flags ^= PRODUCER_FLAG_ENABLED;
 
     g_producerSaveRequested = true;
@@ -321,29 +321,33 @@ void nodeIngestValue(nodeInfo_t *node,
  *
  * @param ts Current timestamp in milliseconds (firmware-provided)
  */
-void producerTick(const uint32_t ts)
+producer_event_t producerTick(const uint32_t ts)
 {
-    for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
+    producer_event_t evt = {0}; /**< Zero out the return event */
+
+    const subMods = nodeGetSubmoduleCount();
+
+    for (uint8_t i = 0; i < subMods; i++) {
+
+        subModule_t *sub = nodeGetSubmodule(i);
+        if (!sub) continue;
 
         runTime_t *rt = producerGetRuntime(i);
         if (!rt) continue;
 
-        subModule_t *sub = producerGetSubModule(i);
-        if (!sub) continue;
 
         /* Producer disabled? */
         if (!(sub->producer_flags & PRODUCER_FLAG_ENABLED))
             continue;
 
         /* Period disabled? */
-        if (rt->period_ms == 0)
+        if (rt->period_ms == PRODUCER_PUBLISH_DISABLED)
             continue;
 
         /* Time to publish? */
         if (ts - lastProducerTick[i] < rt->period_ms)
             continue;
 
-        lastProducerTick[i] = ts;
 
         /* Select value based on valueSource */
         uint32_t value = 0;
@@ -354,19 +358,32 @@ void producerTick(const uint32_t ts)
             default:                         continue;
         }
 
-        /* Change-only logic */
+        /* 
+         * Change-only logic 
+         * If the CHANGE_ONLY flag is set, and the current value equals the last published value, do not publish 
+         */
         if ((sub->producer_flags & PRODUCER_FLAG_CHANGE_ONLY) &&
             (value == rt->last_published_value))
         {
             continue;
         }
 
-        /* Publish CAN message (firmware implements this) */
-        sendProducerData(i, value); // TODO: implement this in main.cpp
+        /* Update last tick */
+        lastProducerTick[i] = ts;
 
-        /* Update last published */
-        rt->last_published_value = value;
-    }
+        /* Setup event to return */
+        evt.ready                = true;   /**< Ready to publish */
+        evt.sub_idx              = i;      /**< Sub-module index */
+        evt.value                = value;  /**< Value to publish */
+        rt->last_published_value = value;  /**< Update last published */
+
+        /** return the value to publish */
+        return evt;
+    } /* end for */
+
+    /** return not ready */ 
+    return evt; 
+
 }
 
 
