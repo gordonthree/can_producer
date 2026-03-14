@@ -3,6 +3,7 @@
 #include "canbus_project.h" /**< Required for nodeInfo_t, subModule_t */
 // #include "node_state.h"     /**< Required for node and trackers */
 #include "can_platform.h"   /**< Required for can_msg_t */
+#include "submodule_types.h"   /**< Sub-module type definitions */
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,6 +17,9 @@ extern "C" {
 #define PRODUCER_FLAG_RESERVED1    (0x04U)
 #define PRODUCER_FLAG_RESERVED2    (0x08U)
 
+#define PRODUCER_RATEMS_1HZ        (1000U)    /**< 1000ms 1 Hz */
+#define PRODUCER_RATEMS_10HZ       (100U)     /**< 100ms 10 Hz */
+#define PRODUCER_RATEMS_100HZ      (10U)      /**< 10ms 100 Hz */
 /* ============================================================================
  *  GLOBALS
  * ========================================================================== */
@@ -50,11 +54,13 @@ void producerToggle(const uint8_t sub_idx);
 void requestProducerSave(void);
 void requestProducerLoad(void);
 
-// Firmware-provided accessors
-producer_t*     producerGetState(const uint8_t sub_idx);
-producer_cfg_t* producerGetConfig(const uint8_t sub_idx);
-uint8_t         producerGetFlags(const uint8_t sub_idx);
-void            producerSetFlags(const uint8_t sub_idx, const uint8_t value);
+/* Forward declarations, node state accessors */
+subModule_t* nodeGetSubModule(const uint8_t sub_idx);
+runTime_t*   nodeGetRuntime(const uint8_t sub_idx); 
+uint8_t*     nodeGetProducerFlags(const uint8_t sub_idx); 
+void         nodeSetProducerFlags(const uint8_t sub_idx, uint8_t flags); 
+
+
 
 /* ============================================================================
  *  END C LINKAGE

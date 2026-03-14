@@ -23,36 +23,56 @@ void handleProducerCfg(const can_msg_t *msg)
         return;
 
     uint8_t idx = msg->data[MSG_DATA_4]; /* data byte 4 is the sub-mod index value */
-    if (idx >= MAX_SUB_MODULES)
+    if (idx >= MAX_SUB_MODULES || idx >= nodeGetSubModuleCnt())
         return;
     
     /** Load data from the main firmware state */
-    producer_t *sub    = producerGetState(idx);
-    producer_cfg_t *cfg = producerGetConfig(idx);
- 
-    cfg->rate_hz  = msg->data[MSG_DATA_5]; // g_producerCfg[idx].rate_hz  = msg->data[5];
-    cfg->flags    = msg->data[MSG_DATA_6]; // g_producerCfg[idx].flags    = msg->data[6];
-    cfg->reserved = msg->data[MSG_DATA_7]; // reserved, currently unused
+    runTime_t   *rt  = nodeGetRuntime(idx);
+    if (!rt) 
+        return;
+
+    subModule_t *sub = nodeGetSubModule(idx);
+    if (!sub)
+        return;
+
+    /** Pack two bytes for the 16-bit period */
+    rt->period_ms       = ((msg->data[MSG_DATA_5] << 8) & 0xFF) |
+                           (msg->data[MSG_DATA_6] & 0xFF); 
+    sub->producer_flags = msg->data[MSG_DATA_7];
 
     /** Request the firmware save data to NVS */
-    g_producerSaveRequested = true;
-
+    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
 }
 
-void handleProducerPurge(void)
+void producerPurgeAll(void)
 {
-    for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
-        producer_cfg_t *cfg = producerGetConfig(i);
-        memset(cfg, 0, sizeof(producer_cfg_t));
+    const uint8_t sub_cnt = nodeGetSubModuleCnt();
+
+    for (uint8_t i = 0; i < sub_cnt; i++) {
+        producerPurgeSingle(i);
     }
-    g_producerSaveRequested = true;
 }
 
-void handleProducerDefaults(void)
+void producerPurgeSingle(const uint8_t sub_idx)
 {
-    for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
-        producer_cfg_t *cfg = producerGetConfig(i);
-        cfg->rate_hz = 0;
+    if (sub_idx >= MAX_SUB_MODULES)
+        return;
+    subModule_t *sub = nodeGetSubModule(sub_idx);
+    runTime_t   *rt  = nodeGetRuntime(sub_idx);
+
+    memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state 
+    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */}
+}
+
+void producerSetDefault(const uint8_t sub_idx)
+{
+    subModule_t *sub = nodeGetSubModule(sub_idx);
+    runTime_t   *rt  = nodeGetRuntime(sub_idx);
+
+    memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
+    rt->period_ms = PRODUCER_RATEMS_1HZ;
+    rt->kind      = PRODUCER_KIND_NONE
+
         cfg->flags   = 0;
         cfg->reserved = 0;
     }
