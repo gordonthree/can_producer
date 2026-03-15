@@ -58,6 +58,7 @@ typedef enum
 } producer_kind_t;
 
 typedef struct {
+    bool     error;      /**< True if an error occurred */
     bool     ready;      /**< True if a message should be published */
     uint8_t  sub_idx;    /**< Which submodule produced the value */
     uint32_t value;      /**< The value to publish */
@@ -101,13 +102,6 @@ void producerToggle(const uint8_t sub_idx);
 void requestProducerSave(void);
 void requestProducerLoad(void);
 
-/* Forward declarations, node state accessors */
-subModule_t* nodeGetSubModule(const uint8_t sub_idx);
-uint8_t      nodeGetSubModuleCnt(void);
-runTime_t*   nodeGetRuntime(const uint8_t sub_idx); 
-uint8_t*     nodeGetProducerFlags(const uint8_t sub_idx); 
-void         nodeSetProducerFlags(const uint8_t sub_idx, uint8_t flags); 
-
 /* ============================================================================
  *  PLATFORM-AGNOSTIC INGESTION API
  * ========================================================================== */
@@ -137,6 +131,19 @@ void nodeIngestValue(nodeInfo_t *node,
  * ========================================================================== */
 
 producer_event_t producerTick(const uint32_t ts); /**< Publish producer values based on tick */
+
+
+/* ============================================================================
+ *  Callback interface for data from the main firmware
+ * ========================================================================== */
+
+typedef struct {
+    const uint8_t (*getSubModuleCount)(void);
+    subModule_t* (*getSubModule)(uint8_t idx);
+    runTime_t* (*getRuntime)(uint8_t idx);
+} producerCallbacks_t;
+
+void producerInit(const producerCallbacks_t *cb);
 
 
 /* ============================================================================

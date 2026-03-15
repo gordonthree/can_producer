@@ -6,6 +6,14 @@ extern "C" {
 
 /* ===== GLOBALS ===== */
 
+static const producerCallbacks_t *g_node = NULL;
+
+/** Grant access to the producer callbacks from the main firmware */
+void producerInit(const producerCallbacks_t *cb)
+{
+    g_node = cb;
+}
+
 /** Producer tick counter array */
 uint32_t lastProducerTick[MAX_SUB_MODULES] = {0}; 
 bool g_producerSaveRequested = false;
@@ -22,17 +30,17 @@ void handleProducerCfg(const can_msg_t *msg)
     if (msg->data_length_code < CFG_PRODUCER_CFG_DLC) /* malformed message, bail out*/
         return;
 
-    const uint8_t sub_cnt = nodeGetSubModuleCnt();
+    const uint8_t sub_cnt = g_node->getSubModuleCount();
     uint8_t idx = msg->data[MSG_DATA_4]; /* data byte 4 is the sub-mod index value */
     if (idx >= MAX_SUB_MODULES || idx >= sub_cnt)
         return;
     
     /** Load data from the main firmware state */
-    runTime_t   *rt  = nodeGetRuntime(idx);
+    runTime_t   *rt  = g_node->getRuntime(idx);
     if (!rt) 
         return;
 
-    subModule_t *sub = nodeGetSubModule(idx);
+    subModule_t *sub = g_node->getSubModule(idx);
     if (!sub)
         return;
 
@@ -48,7 +56,7 @@ void handleProducerCfg(const can_msg_t *msg)
 
 void producerPurgeAll(void)
 {
-    const uint8_t sub_cnt = nodeGetSubModuleCnt();
+    const uint8_t sub_cnt = g_node->getSubModuleCount();
 
     for (uint8_t i = 0; i < sub_cnt; i++) {
         producerPurgeSingle(i);
@@ -59,8 +67,8 @@ void producerPurgeSingle(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
         return;
-    subModule_t *sub = nodeGetSubModule(sub_idx);
-    runTime_t   *rt  = nodeGetRuntime(sub_idx);
+    subModule_t *sub = g_node->getSubModule(sub_idx);
+    runTime_t   *rt  = g_node->getRuntime(sub_idx);
 
     memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
     sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
@@ -69,8 +77,8 @@ void producerPurgeSingle(const uint8_t sub_idx)
 /** Reset single producer to default */
 void producerDefaultSingle(const uint8_t sub_idx)
 {
-    subModule_t *sub = nodeGetSubModule(sub_idx);
-    runTime_t   *rt  = nodeGetRuntime(sub_idx);
+    subModule_t *sub = g_node->getSubModule(sub_idx);
+    runTime_t   *rt  = g_node->getRuntime(sub_idx);
 
     memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
     rt->period_ms       = PRODUCER_RATEMS_1HZ;
@@ -83,7 +91,7 @@ void producerDefaultSingle(const uint8_t sub_idx)
 /** Reset all producers to default state */
 void producerDefaultAll(void)
 {
-    const uint8_t sub_cnt = nodeGetSubModuleCnt();
+    const uint8_t sub_cnt = g_node->getSubModuleCount();
 
     for (uint8_t i = 0; i < sub_cnt; i++) {
         producerDefaultSingle(i);
@@ -96,7 +104,7 @@ void producerEnable(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = nodeGetSubModule(sub_idx);
+    subModule_t *sub = g_node->getSubModule(sub_idx);
     sub->producer_flags |= PRODUCER_FLAG_ENABLED;
     sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 }
@@ -106,7 +114,7 @@ void producerDisable(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
     
-    subModule_t *sub = nodeGetSubModule(sub_idx);
+    subModule_t *sub = g_node->getSubModule(sub_idx);
     sub->producer_flags &= ~PRODUCER_FLAG_ENABLED;
     sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 
@@ -117,7 +125,7 @@ void producerToggle(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = nodeGetSubModule(sub_idx);
+    subModule_t *sub = g_node->getSubModule(sub_idx);
     sub->producer_flags ^= PRODUCER_FLAG_ENABLED;
     sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 
@@ -145,7 +153,7 @@ void requestProducerSave(void)
  *
  * Each function:
  *   - Validates the submodule index
- *   - Retrieves the runTime_t via producerGetRuntime()
+ *   - Retrieves the runTime_t via nodeGetRuntime()
  *   - Updates the appropriate runtime field
  *   - Updates the timestamp (last_change_ms)
  *
@@ -166,7 +174,7 @@ void nodeSetDigitalState(nodeInfo_t *node,
                          const uint8_t state,
                          const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
     rt->state          = state;  /**< Logical digital input state */
@@ -187,7 +195,7 @@ void nodeSetAdcValue(nodeInfo_t *node,
                      const uint32_t value,
                      const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
     rt->adc_value      = value;  /**< Last sampled ADC value */
@@ -208,7 +216,7 @@ void nodeSetOutputState(nodeInfo_t *node,
                         const uint8_t value,
                         const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
     rt->last_hardware_output = value; /**< Last written hardware output */
@@ -232,7 +240,7 @@ void nodeIngestValue(nodeInfo_t *node,
                      const uint32_t value,
                      const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
     rt->last_published_value = value; /**< Store generic value */
@@ -248,15 +256,26 @@ void nodeIngestValue(nodeInfo_t *node,
 producer_event_t producerTick(const uint32_t ts)
 {
     producer_event_t evt = {0}; /**< Zero out the return event */
+    evt.ready = false;
 
-    const subMods = nodeGetSubmoduleCount();
+    if (!g_node ||
+        !g_node->getSubModuleCount ||
+        !g_node->getSubModule ||
+        !g_node->getRuntime) 
+        {
+        evt.ready = false;
+        evt.error = true;
+        return evt;  // or return evt with ready = false
+    }
+
+    const uint8_t subMods = g_node->getSubModuleCount();
 
     for (uint8_t i = 0; i < subMods; i++) {
 
-        subModule_t *sub = nodeGetSubmodule(i);
+        subModule_t *sub = g_node->getSubModule(i);
         if (!sub) continue;
 
-        runTime_t *rt = producerGetRuntime(i);
+        runTime_t *rt = g_node->getRuntime(i);
         if (!rt) continue;
 
 
