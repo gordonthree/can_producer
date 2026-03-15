@@ -22,8 +22,9 @@ void handleProducerCfg(const can_msg_t *msg)
     if (msg->data_length_code < CFG_PRODUCER_CFG_DLC) /* malformed message, bail out*/
         return;
 
+    const uint8_t sub_cnt = nodeGetSubModuleCnt();
     uint8_t idx = msg->data[MSG_DATA_4]; /* data byte 4 is the sub-mod index value */
-    if (idx >= MAX_SUB_MODULES || idx >= nodeGetSubModuleCnt())
+    if (idx >= MAX_SUB_MODULES || idx >= sub_cnt)
         return;
     
     /** Load data from the main firmware state */
@@ -44,6 +45,7 @@ void handleProducerCfg(const can_msg_t *msg)
     sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
 }
 
+
 void producerPurgeAll(void)
 {
     const uint8_t sub_cnt = nodeGetSubModuleCnt();
@@ -60,65 +62,54 @@ void producerPurgeSingle(const uint8_t sub_idx)
     subModule_t *sub = nodeGetSubModule(sub_idx);
     runTime_t   *rt  = nodeGetRuntime(sub_idx);
 
-    memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state 
-    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */}
+    memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
+    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
 }
 
-void producerSetDefault(const uint8_t sub_idx)
+/** Reset single producer to default */
+void producerDefaultSingle(const uint8_t sub_idx)
 {
     subModule_t *sub = nodeGetSubModule(sub_idx);
     runTime_t   *rt  = nodeGetRuntime(sub_idx);
 
     memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
-    rt->period_ms = PRODUCER_RATEMS_1HZ;
-    rt->kind      = PRODUCER_KIND_NONE
-
-        cfg->flags   = 0;
-        cfg->reserved = 0;
-    }
-    g_producerSaveRequested = true;
+    rt->period_ms       = PRODUCER_RATEMS_1HZ;
+    rt->kind            = PRODUCER_KIND_NONE;
+    rt->valueSource     = VALUE_SRC_NONE;
+    sub->producer_flags = PRODUCER_FLAG_NONE;
+    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
 }
 
-void producerDelete(const uint8_t sub_idx)
+/** Reset all producers to default state */
+void producerDefaultAll(void)
 {
-    if (sub_idx >= MAX_SUB_MODULES)
-        return;
+    const uint8_t sub_cnt = nodeGetSubModuleCnt();
 
-    // Clear producer personality
-    producer_t *p = producerGetState(sub_idx);
-    memset(p, 0, sizeof(producer_t));
-
-    // Clear producer configuration
-    producer_cfg_t *cfg = producerGetConfig(sub_idx);
-    memset(cfg, 0, sizeof(producer_cfg_t));
-
-    // Clear submodule flags related to producer behavior
-    producerSetFlags(sub_idx, 0);
-
-    // Ask firmware to persist the change
-    g_producerSaveRequested = true;
+    for (uint8_t i = 0; i < sub_cnt; i++) {
+        producerDefaultSingle(i);
+    }
 }
+
 
 void producerEnable(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    producer_cfg_t *cfg = producerGetConfig(sub_idx);
-    cfg->flags |= PRODUCER_FLAG_ENABLED;
-
-    g_producerSaveRequested = true;
+    subModule_t *sub = nodeGetSubModule(sub_idx);
+    sub->producer_flags |= PRODUCER_FLAG_ENABLED;
+    sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 }
 
 void producerDisable(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
         return;
+    
+    subModule_t *sub = nodeGetSubModule(sub_idx);
+    sub->producer_flags &= ~PRODUCER_FLAG_ENABLED;
+    sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 
-    producer_cfg_t *cfg = producerGetConfig(sub_idx);
-    cfg->flags &= ~PRODUCER_FLAG_ENABLED;
-
-    g_producerSaveRequested = true;
 }
 
 void producerToggle(const uint8_t sub_idx)
@@ -126,10 +117,8 @@ void producerToggle(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    producer_cfg_t *cfg = producerGetConfig(sub_idx);
-    cfg->flags ^= PRODUCER_FLAG_ENABLED;
-
-    g_producerSaveRequested = true;
+    subModule_t *sub = nodeGetSubModule(sub_idx);
+    sub->producer_flags ^= PRODUCER_FLAG_ENABLED;
 }
 
 void requestProducerLoad(void)

@@ -11,7 +11,7 @@ extern "C" {
 /* ============================================================================
  *  CONSTANTS
  * ========================================================================== */
-
+#define PRODUCER_FLAG_NONE         (0x00U)
 #define PRODUCER_FLAG_ENABLED      (0x01U)
 #define PRODUCER_FLAG_CHANGE_ONLY  (0x02U)
 #define PRODUCER_FLAG_RESERVED1    (0x04U)
@@ -34,28 +34,57 @@ typedef enum {
     PRODUCER_KIND_SWITCH_STATE, // ON/OFF/MOMENTARY
     PRODUCER_KIND_LEVEL,        // Brightness, duty cycle, analog level
     PRODUCER_KIND_SENSOR,       // ADC, temperature, etc.
+    PRODUCER_KIND_COUNTER,      /**< Counter / incrementing producer */
     PRODUCER_KIND_EVENT         // Button press, edge-triggered events
 } producer_kind_t;
 
+typedef struct {
+    bool     ready;      /**< True if a message should be published */
+    uint8_t  sub_idx;    /**< Which submodule produced the value */
+    uint32_t value;      /**< The value to publish */
+} producer_event_t;
+
+/**
+ * @brief Value source selector for producerReadValue().
+ */
+typedef enum
+{
+    VALUE_SRC_NONE      = 0, /**< Disabled / invalid value source */
+    VALUE_SRC_STATE       ,  /**< Use logical digital state */
+    VALUE_SRC_ADC         ,  /**< Use ADC sample value */
+    VALUE_SRC_CONFIG      ,  /**< Use configuration byte */
+    VALUE_SRC_HW_OUTPUT   ,  /**< Use last hardware output value */
+    VALUE_SRC_RESERVED4   ,  /**< Reserved for future expansion */
+    VALUE_SRC_RESERVED5   ,  /**< Reserved for future expansion */
+    VALUE_SRC_RESERVED6   ,  /**< Reserved for future expansion */
+    VALUE_SRC_RESERVED7      /**< Reserved for future expansion */
+
+} valueSource_t;
 
 /* ============================================================================
  *  PRODUCER CONFIG API
  * ========================================================================== */
 
+ /* config management */
 void handleProducerCfg(const can_msg_t *msg);
-void handleProducerPurge(void);
-void handleProducerDefaults(void);
-void handleProducerRemove(const uint8_t sub_idx);
-void handleReqProducerCfg(const can_msg_t *msg);
+void producerPurgeSingle(const uint8_t sub_idx);
+void producerPurgeAll(void);
+void producerDefaultSingle(const uint8_t sub_idx);
+void producerDefaultAll(void);
 void producerDelete(const uint8_t sub_idx);
+
+/* enable/disable */
 void producerEnable(const uint8_t sub_idx);
 void producerDisable(const uint8_t sub_idx);
 void producerToggle(const uint8_t sub_idx);
+
+/* producer save/load */
 void requestProducerSave(void);
 void requestProducerLoad(void);
 
 /* Forward declarations, node state accessors */
 subModule_t* nodeGetSubModule(const uint8_t sub_idx);
+uint8_t      nodeGetSubModuleCnt(void);
 runTime_t*   nodeGetRuntime(const uint8_t sub_idx); 
 uint8_t*     nodeGetProducerFlags(const uint8_t sub_idx); 
 void         nodeSetProducerFlags(const uint8_t sub_idx, uint8_t flags); 
