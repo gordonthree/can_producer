@@ -8,6 +8,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 /* ============================================================================
  *  CONSTANTS
  * ========================================================================== */
@@ -17,25 +18,43 @@ extern "C" {
 #define PRODUCER_FLAG_RESERVED1    (0x04U)
 #define PRODUCER_FLAG_RESERVED2    (0x08U)
 
+#define DEFAULT_PUBLISH_RATE        1000  /**< Default publish period in ms (1 Hz) */
+#define PRODUCER_PUBLISH_DISABLED   0
+
 #define PRODUCER_RATEMS_1HZ        (1000U)    /**< 1000ms 1 Hz */
 #define PRODUCER_RATEMS_10HZ       (100U)     /**< 100ms 10 Hz */
 #define PRODUCER_RATEMS_100HZ      (10U)      /**< 10ms 100 Hz */
+
+
 /* ============================================================================
  *  GLOBALS
  * ========================================================================== */
+
+/* Forward declarations */
+struct nodeInfo_t;              
+typedef struct nodeInfo_t nodeInfo_t;
 
 /** Producer tick counter */
 extern uint32_t lastProducerTick[]; /**< Array of producer tick counters */
 extern bool g_producerSaveRequested;
 extern bool g_producerLoadRequested;
+extern bool g_producerMessageWaiting;
 
-typedef enum {
-    PRODUCER_KIND_NONE = 0,     // Not a producer
-    PRODUCER_KIND_SWITCH_STATE, // ON/OFF/MOMENTARY
-    PRODUCER_KIND_LEVEL,        // Brightness, duty cycle, analog level
-    PRODUCER_KIND_SENSOR,       // ADC, temperature, etc.
-    PRODUCER_KIND_COUNTER,      /**< Counter / incrementing producer */
-    PRODUCER_KIND_EVENT         // Button press, edge-triggered events
+/* ============================================================================
+ *  TYPEDEFS
+ * ========================================================================== */
+
+/**
+ * @brief Producer behavioral type.
+ */
+typedef enum
+{
+    PRODUCER_KIND_NONE     = 0,  /**< No producer / disabled */
+    PRODUCER_KIND_DIGITAL  = 1,  /**< Digital producer (0/1) */
+    PRODUCER_KIND_ANALOG   = 2,  /**< Analog producer (0–4095, etc.) */
+    PRODUCER_KIND_COUNTER  = 3,  /**< Counter / incrementing producer */
+    PRODUCER_KIND_CUSTOM   = 4   /**< User-defined or extended behavior */
+
 } producer_kind_t;
 
 typedef struct {
@@ -89,6 +108,35 @@ runTime_t*   nodeGetRuntime(const uint8_t sub_idx);
 uint8_t*     nodeGetProducerFlags(const uint8_t sub_idx); 
 void         nodeSetProducerFlags(const uint8_t sub_idx, uint8_t flags); 
 
+/* ============================================================================
+ *  PLATFORM-AGNOSTIC INGESTION API
+ * ========================================================================== */
+
+void nodeSetDigitalState(nodeInfo_t *node,
+                         const uint8_t idx,
+                         const uint8_t state,
+                         const uint32_t ts);
+
+void nodeSetAdcValue(nodeInfo_t *node,
+                     const uint8_t idx,
+                     const uint32_t value,
+                     const uint32_t ts);
+
+void nodeSetOutputState(nodeInfo_t *node,
+                        const uint8_t idx,
+                        const uint8_t value,
+                        const uint32_t ts);
+
+void nodeIngestValue(nodeInfo_t *node,
+                     const uint8_t idx,
+                     const uint32_t value,
+                     const uint32_t ts);
+
+/* ============================================================================
+ *  PRODUCER TICK (publishing logic)
+ * ========================================================================== */
+
+producer_event_t producerTick(const uint32_t ts); /**< Publish producer values based on tick */
 
 
 /* ============================================================================
