@@ -50,10 +50,12 @@ extern bool g_producerMessageWaiting;
 typedef enum
 {
     PRODUCER_KIND_NONE     = 0,  /**< No producer / disabled */
-    PRODUCER_KIND_DIGITAL  = 1,  /**< Digital producer (0/1) */
-    PRODUCER_KIND_ANALOG   = 2,  /**< Analog producer (0–4095, etc.) */
-    PRODUCER_KIND_COUNTER  = 3,  /**< Counter / incrementing producer */
-    PRODUCER_KIND_CUSTOM   = 4   /**< User-defined or extended behavior */
+    PRODUCER_KIND_DIGITAL,       /**< Digital producer (0/1) */
+    PRODUCER_KIND_ANALOG,        /**< Analog producer (0–4095, etc.) */
+    PRODUCER_KIND_COUNTER,       /**< Counter / incrementing producer */
+    PRODUCER_KIND_TIMER,         /**< Timer / decrementing producer */
+    PRODUCER_KIND_PERIODIC,      /**< Periodic value producer */
+    PRODUCER_KIND_CUSTOM         /**< User-defined or extended behavior */
 
 } producer_kind_t;
 
@@ -74,6 +76,7 @@ typedef enum
     VALUE_SRC_ADC         ,  /**< Use ADC sample value */
     VALUE_SRC_CONFIG      ,  /**< Use configuration byte */
     VALUE_SRC_HW_OUTPUT   ,  /**< Use last hardware output value */
+    VALUE_SRC_NUMERIC     ,  /**< Use numeric value */
     VALUE_SRC_RESERVED4   ,  /**< Reserved for future expansion */
     VALUE_SRC_RESERVED5   ,  /**< Reserved for future expansion */
     VALUE_SRC_RESERVED6   ,  /**< Reserved for future expansion */
