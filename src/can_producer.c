@@ -297,6 +297,7 @@ producer_event_t producerTick(const uint32_t ts)
         switch (rt->valueSource) {
             case VALUE_SRC_STATE:            value = rt->state; break;
             case VALUE_SRC_ADC:              value = rt->adc_value; break;
+            case VALUE_SRC_NUMERIC:          value = rt->adc_value; break; /* same as ADC */
             case VALUE_SRC_HW_OUTPUT:        value = rt->last_hardware_output; break;
             default:                         continue;
         }
