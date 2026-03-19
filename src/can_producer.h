@@ -94,7 +94,6 @@ void producerPurgeSingle(const uint8_t sub_idx);
 void producerPurgeAll(void);
 void producerDefaultSingle(const uint8_t sub_idx);
 void producerDefaultAll(void);
-void producerDelete(const uint8_t sub_idx);
 
 /* enable/disable */
 void producerEnable(const uint8_t sub_idx);
