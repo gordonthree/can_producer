@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string.h> // for memset
+#include <stddef.h> // for NULL
+
 #include "canbus_project.h" /**< Required for nodeInfo_t, subModule_t */
 // #include "node_state.h"     /**< Required for node and trackers */
 #include "can_platform.h"   /**< Required for can_msg_t */
