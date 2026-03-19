@@ -81,7 +81,7 @@ void producerDefaultSingle(const uint8_t sub_idx)
     runTime_t   *rt  = g_node->getRuntime(sub_idx);
 
     memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
-    rt->period_ms       = PRODUCER_RATEMS_1HZ;
+    rt->period_ms       = PRODUCER_PUBLISH_DISABLED;
     rt->kind            = PRODUCER_KIND_NONE;
     sub->producer_flags = PRODUCER_FLAG_NONE;
     sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
