@@ -83,7 +83,6 @@ void producerDefaultSingle(const uint8_t sub_idx)
     memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
     rt->period_ms       = PRODUCER_RATEMS_1HZ;
     rt->kind            = PRODUCER_KIND_NONE;
-    rt->valueSource     = VALUE_SRC_NONE;
     sub->producer_flags = PRODUCER_FLAG_NONE;
     sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
 }
@@ -177,7 +176,7 @@ void nodeSetDigitalState(nodeInfo_t *node,
     runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
-    rt->state          = state;  /**< Logical digital input state */
+    rt->valueU32       = state;  /**< Logical digital input state */
     rt->last_change_ms = ts;     /**< Timestamp of last update */
 }
 
@@ -198,7 +197,7 @@ void nodeSetAdcValue(nodeInfo_t *node,
     runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
-    rt->adc_value      = value;  /**< Last sampled ADC value */
+    rt->valueU32       = value;  /**< Last sampled ADC value */
     rt->last_change_ms = ts;     /**< Timestamp of last update */
 }
 
@@ -219,8 +218,8 @@ void nodeSetOutputState(nodeInfo_t *node,
     runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
-    rt->last_hardware_output = value; /**< Last written hardware output */
-    rt->last_change_ms       = ts;    /**< Timestamp of last update */
+    rt->valueU32       = value; /**< Last written hardware output */
+    rt->last_change_ms = ts;    /**< Timestamp of last update */
 }
 
 
@@ -292,15 +291,8 @@ producer_event_t producerTick(const uint32_t ts)
             continue;
 
 
-        /* Select value based on valueSource */
-        uint32_t value = 0;
-        switch (rt->valueSource) {
-            case VALUE_SRC_STATE:            value = rt->state; break;
-            case VALUE_SRC_ADC:              value = rt->adc_value; break;
-            case VALUE_SRC_NUMERIC:          value = rt->adc_value; break; /* same as ADC */
-            case VALUE_SRC_HW_OUTPUT:        value = rt->last_hardware_output; break;
-            default:                         continue;
-        }
+        /* Retrieve value */
+        uint32_t value = rt->valueU32; 
 
         /* 
          * Change-only logic 
@@ -313,7 +305,7 @@ producer_event_t producerTick(const uint32_t ts)
         }
 
         /* Update last tick */
-        lastProducerTick[i] = ts;
+        lastProducerTick[i]      = ts;
 
         /* Setup event to return */
         evt.ready                = true;   /**< Ready to publish */
