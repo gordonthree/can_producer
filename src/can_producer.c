@@ -28,7 +28,7 @@ bool g_producerLoadRequested = false;
 
 void handleProducerCfg(const can_msg_t *msg)
 {
-    if (msg->data_length_code < CFG_PRODUCER_CFG_DLC) /* malformed message, bail out*/
+    if (msg->data_length_code < CFG_PRODUCER_CFG_DLC)
         return;
 
     const uint8_t sub_cnt = g_node->getSubModuleCount();
@@ -109,6 +109,14 @@ void producerEnable(const uint8_t sub_idx)
     sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 }
 
+/**
+ * @brief Disable a producer from publishing data.
+ *
+ * Clear the PRODUCER_FLAG_ENABLED bit in the producer flags of the sub-module at idx.
+ * This will prevent the producer from publishing data according to its configuration.
+ *
+ * @param sub_idx Index of the sub-module to disable.
+ */
 void producerDisable(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
@@ -120,6 +128,14 @@ void producerDisable(const uint8_t sub_idx)
 
 }
 
+/**
+ * @brief Toggle the enabled state of a producer.
+ *
+ * Toggle the PRODUCER_FLAG_ENABLED bit in the producer flags of the sub-module at idx.
+ * This will enable or disable the producer from publishing data according to its configuration.
+ *
+ * @param sub_idx Index of the sub-module to toggle.
+ */
 void producerToggle(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
@@ -131,12 +147,26 @@ void producerToggle(const uint8_t sub_idx)
 
 }
 
+/**
+ * @brief Request the main loop to load the producer configuration.
+ *
+ * This function sets a flag which will be checked in the main loop.
+ * If the flag is set, the main loop will load the producer configuration
+ * from non-volatile storage and apply it to the runtime.
+ */
 void requestProducerLoad(void)
 {
     /** set a flag and the main loop will handle the producer load request */
     g_producerLoadRequested = true; 
 }
 
+/**
+ * @brief Request the main loop to save the producer configuration.
+ *
+ * This function sets a flag which will be checked in the main loop.
+ * If the flag is set, the main loop will save the producer configuration
+ * to non-volatile storage.
+ */
 void requestProducerSave(void)
 {
     /** set a flag and the main loop will handle the producer save request */
