@@ -280,13 +280,13 @@ producer_event_t producerTick(const uint32_t ts)
         runTime_t *rt = &sub->runTime;
         if (!rt) continue;
 
-        static uint32_t last_seen = 0;
+        // printf("[PRODLOOP] i=%u sub=%p flags=0x%02X period=%u\n",
+        //     i,
+        //     (void*)sub,
+        //     sub ? sub->producer_flags : 0,
+        //     sub ? sub->runTime.period_ms : 0);
 
-        if (i == 1) {
-            printf("PROD val=%u last=%u\n", rt->valueU32, rt->last_published_value);
-
-            vTaskDelay(200 / portTICK_PERIOD_MS);
-        }
+        // vTaskDelay(100 / portTICK_PERIOD_MS);
 
         /* Producer disabled? */
         if (!(sub->producer_flags & PRODUCER_FLAG_ENABLED))
@@ -297,8 +297,10 @@ producer_event_t producerTick(const uint32_t ts)
             continue;
 
         /* Time to publish? */
-        if (ts - lastProducerTick[i] < rt->period_ms)
-            continue;
+
+        static uint32_t lastDebugTs = 0;
+
+
 
 
         /* Retrieve value */
@@ -308,11 +310,60 @@ producer_event_t producerTick(const uint32_t ts)
          * Change-only logic 
          * If the CHANGE_ONLY flag is set, and the current value equals the last published value, do not publish 
          */
-        if ((sub->producer_flags & PRODUCER_FLAG_CHANGE_ONLY) &&
-            (value == rt->last_published_value))
-        {
+        // if ((sub->producer_flags & PRODUCER_FLAG_CHANGE_ONLY) &&
+        //     (value == rt->last_published_value))
+        // {
+        //     continue;
+        // }
+
+        bool isMomentary = (sub->config.gpioInput.flags & INPUT_FLAG_MASK_MODE) == INPUT_FLAG_MODE_MOMENTARY;
+        // uint8_t flags    = sub->config.gpioInput.flags;
+        // uint8_t modeBits = flags & INPUT_FLAG_MASK_MODE;
+
+        // if ((ts - lastDebugTs) > 100) {
+        //     lastDebugTs = ts;
+        //     printf("[PRODDBG] sub=%u ts=%u inputFlags=0x%02X isMomentary=%u period=%u flags=0x%02X valueU32=%u lastPub=%u\n",
+        //         i,
+        //         ts,
+        //         sub->config.gpioInput.flags,
+        //         isMomentary,
+        //         rt->period_ms,
+        //         sub->producer_flags,
+        //         rt->valueU32,
+        //         rt->last_published_value);
+
+        //     printf("[PRODDBG] flags=0x%02X modeBits=0x%02X MOM=0x%02X\n",
+        //         flags,
+        //         modeBits,
+        //         INPUT_MODE_MOMENTARY);
+
+        // }   
+
+        /* Check if time to publish */
+        if (ts - lastProducerTick[i] < rt->period_ms)
             continue;
+
+        if (isMomentary) {
+
+            bool isReleased = (value == MOMENTARY_RELEASE_VALUE);
+
+            /* If released AND unchanged → skip */
+            if (isReleased && value == rt->last_published_value) {
+                continue;
+            }
+
+            /* If released AND changed → publish once (release event) */
+            /* If pressed (active) → always publish */
         }
+        else {
+            /* Normal CHANGE_ONLY behavior */
+            if ((sub->producer_flags & PRODUCER_FLAG_CHANGE_ONLY) &&
+                (value == rt->last_published_value))
+            {
+                continue;
+            }
+        }
+
 
         /* Update last tick */
         lastProducerTick[i]      = ts;
