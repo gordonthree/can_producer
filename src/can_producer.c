@@ -316,7 +316,11 @@ producer_event_t producerTick(const uint32_t ts)
         //     continue;
         // }
 
-        bool isMomentary = (sub->config.gpioInput.flags & INPUT_FLAG_MASK_MODE) == INPUT_FLAG_MODE_MOMENTARY;
+        /** Determine if the input is treated as momentary */
+        bool isMomentary = (sub->config.gpioInput.flags 
+                            & INPUT_FLAG_MASK_MODE) 
+                            == INPUT_FLAG_MODE_MOMENTARY;
+
         // uint8_t flags    = sub->config.gpioInput.flags;
         // uint8_t modeBits = flags & INPUT_FLAG_MASK_MODE;
 
@@ -344,6 +348,11 @@ producer_event_t producerTick(const uint32_t ts)
             continue;
 
         if (isMomentary) {
+
+            /* Skip if not active or released (skip startup value)*/
+            if (value != MOMENTARY_ACTIVE_VALUE && value != MOMENTARY_RELEASE_VALUE) {
+                continue;
+            }
 
             bool isReleased = (value == MOMENTARY_RELEASE_VALUE);
 
