@@ -1,10 +1,19 @@
 #include "can_producer.h"
+#include <freertos/task.h> /* for vTaskDelay */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* ===== GLOBALS ===== */
+
+static const producerCallbacks_t *g_node = NULL;
+
+/** Grant access to the producer callbacks from the main firmware */
+void producerInit(const producerCallbacks_t *cb)
+{
+    g_node = cb;
+}
 
 /** Producer tick counter array */
 uint32_t lastProducerTick[MAX_SUB_MODULES] = {0}; 
@@ -22,129 +31,82 @@ void handleProducerCfg(const can_msg_t *msg)
     if (msg->data_length_code < CFG_PRODUCER_CFG_DLC)
         return;
 
-    uint8_t idx = msg->data[MSG_DATA_4];
-    if (idx >= MAX_SUB_MODULES)
+    const uint8_t sub_cnt = g_node->getSubModuleCount();
+    uint8_t idx = msg->data[MSG_DATA_4]; /* data byte 4 is the sub-mod index value */
+    if (idx >= MAX_SUB_MODULES || idx >= sub_cnt)
+        return;
+    
+    /** Load data from the main firmware state */
+    runTime_t   *rt  = g_node->getRuntime(idx);
+    if (!rt) 
         return;
 
-    subModule_t *sub = nodeGetSubmodule(idx);
-    if (!sub) return;
+    subModule_t *sub = g_node->getSubModule(idx);
+    if (!sub)
+        return;
 
-    runTime_t *rt = &sub->runTime;
+    /** Pack two bytes for the 16-bit period */
+    rt->period_ms       = ((msg->data[MSG_DATA_5] << BYTE_SHIFT) & BYTE_MASK) |
+                           (msg->data[MSG_DATA_6] & BYTE_MASK); 
+    sub->producer_flags = msg->data[MSG_DATA_7];
 
-    /* ============================
-     *  Decode producer configuration
-     * ============================ */
-
-    rt->period_ms = ((uint16_t)msg->data[MSG_DATA_5] << BYTE_SHIFT)  /**< period_ms MSB */
-                   |  (uint16_t)msg->data[MSG_DATA_6];               /**< period_ms LSB */
-
-    sub->producer_flags = msg->data[MSG_DATA_7];                     /**< producer flags */
-
-    g_producerSaveRequested = true;
+    /** Request the firmware save data to NVS */
+    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
 }
 
 
-/**
- * @brief Restore universal safe defaults for all producers.
- *
- * Calls producerDefaultSingle() for each sub-module. This avoids duplicating
- * default logic and ensures all producers share the same baseline behavior.
- */
+void producerPurgeAll(void)
+{
+    const uint8_t sub_cnt = g_node->getSubModuleCount();
+
+    for (uint8_t i = 0; i < sub_cnt; i++) {
+        producerPurgeSingle(i);
+    }
+}
+
+void producerPurgeSingle(const uint8_t sub_idx)
+{
+    if (sub_idx >= MAX_SUB_MODULES)
+        return;
+    subModule_t *sub = g_node->getSubModule(sub_idx);
+    runTime_t   *rt  = g_node->getRuntime(sub_idx);
+
+    memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
+    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
+}
+
+/** Reset single producer to default */
+void producerDefaultSingle(const uint8_t sub_idx)
+{
+    subModule_t *sub = g_node->getSubModule(sub_idx);
+    runTime_t   *rt  = g_node->getRuntime(sub_idx);
+
+    memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
+    rt->period_ms       = PRODUCER_PUBLISH_DISABLED;
+    rt->kind            = PRODUCER_KIND_NONE;
+    sub->producer_flags = PRODUCER_FLAG_NONE;
+    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
+}
+
+/** Reset all producers to default state */
 void producerDefaultAll(void)
 {
-    for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
+    const uint8_t sub_cnt = g_node->getSubModuleCount();
+
+    for (uint8_t i = 0; i < sub_cnt; i++) {
         producerDefaultSingle(i);
     }
 }
 
 
-/**
- * @brief Restore meaningful default producer configuration for a single sub-module.
- *
- * @param sub_idx Index of the sub-module to default.
- */
-void producerDefaultSingle(const uint8_t sub_idx)
-{
-    if (sub_idx >= MAX_SUB_MODULES)
-        return;
-
-    subModule_t *sub = nodeGetSubmodule(sub_idx);
-    if (!sub) return;
-
-    runTime_t *rt = &sub->runTime;
-
-    /* Clear runtime snapshot */
-    memset(rt, 0, sizeof(runTime_t));
-
-    /* Apply meaningful defaults */
-    rt->kind            = PRODUCER_KIND_NONE;        /**< No kind by default */
-    rt->valueSource     = VALUE_SRC_NONE;            /**< Publish nothing */
-    rt->period_ms       = PRODUCER_PUBLISH_DISABLED; /**< Disabled */
-    sub->producer_flags = PRODUCER_FLAG_NONE;        /**< Disabled by default */
-
-    g_producerSaveRequested = true;
-}
-
-
-/**
- * @brief CAUTION: Hard wipe of all producer runtime/config fields.
- *        This clears all producer-related state for every sub-module.
- */
-void producerPurgeAll(void)
-{
-    for (uint8_t i = 0; i < MAX_SUB_MODULES; i++) {
-
-        subModule_t *sub = nodeGetSubmodule(i);
-        if (!sub) continue;
-
-        runTime_t *rt = &sub->runTime;
-        memset(rt, 0, sizeof(runTime_t));              /**< Clear runtime/config */
-
-        sub->producer_flags = PRODUCER_FLAG_NONE;      /**< Clear all producer flags */
-    }
-
-    g_producerSaveRequested = true;
-}
-
-
-
-/**
- * @brief CAUTION: Hard delete of a single producer runtime/config fields.
- *        This clears all producer-related state for a single sub-module.
- *
- * @param sub_idx The index of the sub-module to delete.
- */
-void producerDelete(const uint8_t sub_idx)
-{
-    subModule_t *sub = nodeGetSubmodule(sub_idx);
-    if (!sub) return;
-
-    runTime_t *rt = &sub->runTime;
-    memset(rt, 0, sizeof(runTime_t));
-
-    sub->producer_flags = PRODUCER_FLAG_NONE;  /**< Clear flags too */
-
-    g_producerSaveRequested = true;
-
-}
-
-/**
- * @brief Enable a producer to publish data.
- *
- * Set the PRODUCER_FLAG_ENABLED bit in the producer flags of the sub-module at idx.
- * This will allow the producer to publish data according to its configuration.
- *
- * @param sub_idx Index of the sub-module to enable.
- */
 void producerEnable(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = nodeGetSubmodule(sub_idx);
+    subModule_t *sub = g_node->getSubModule(sub_idx);
     sub->producer_flags |= PRODUCER_FLAG_ENABLED;
-
-    g_producerSaveRequested = true;
+    sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 }
 
 /**
@@ -159,11 +121,11 @@ void producerDisable(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
         return;
-
-    subModule_t *sub = nodeGetSubmodule(sub_idx);
+    
+    subModule_t *sub = g_node->getSubModule(sub_idx);
     sub->producer_flags &= ~PRODUCER_FLAG_ENABLED;
+    sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 
-    g_producerSaveRequested = true;
 }
 
 /**
@@ -179,10 +141,10 @@ void producerToggle(const uint8_t sub_idx)
     if (sub_idx >= MAX_SUB_MODULES)
         return;
 
-    subModule_t *sub = nodeGetSubmodule(sub_idx);
+    subModule_t *sub = g_node->getSubModule(sub_idx);
     sub->producer_flags ^= PRODUCER_FLAG_ENABLED;
+    sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 
-    g_producerSaveRequested = true;
 }
 
 /**
@@ -221,7 +183,7 @@ void requestProducerSave(void)
  *
  * Each function:
  *   - Validates the submodule index
- *   - Retrieves the runTime_t via producerGetRuntime()
+ *   - Retrieves the runTime_t via nodeGetRuntime()
  *   - Updates the appropriate runtime field
  *   - Updates the timestamp (last_change_ms)
  *
@@ -242,10 +204,10 @@ void nodeSetDigitalState(nodeInfo_t *node,
                          const uint8_t state,
                          const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
-    rt->state          = state;  /**< Logical digital input state */
+    rt->valueU32       = state;  /**< Logical digital input state */
     rt->last_change_ms = ts;     /**< Timestamp of last update */
 }
 
@@ -263,10 +225,10 @@ void nodeSetAdcValue(nodeInfo_t *node,
                      const uint32_t value,
                      const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
-    rt->adc_value      = value;  /**< Last sampled ADC value */
+    rt->valueU32       = value;  /**< Last sampled ADC value */
     rt->last_change_ms = ts;     /**< Timestamp of last update */
 }
 
@@ -284,11 +246,11 @@ void nodeSetOutputState(nodeInfo_t *node,
                         const uint8_t value,
                         const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
-    rt->last_hardware_output = value; /**< Last written hardware output */
-    rt->last_change_ms       = ts;    /**< Timestamp of last update */
+    rt->valueU32       = value; /**< Last written hardware output */
+    rt->last_change_ms = ts;    /**< Timestamp of last update */
 }
 
 
@@ -308,7 +270,7 @@ void nodeIngestValue(nodeInfo_t *node,
                      const uint32_t value,
                      const uint32_t ts)
 {
-    runTime_t *rt = producerGetRuntime(idx);
+    runTime_t *rt = g_node->getRuntime(idx);
     if (!rt) return;
 
     rt->last_published_value = value; /**< Store generic value */
@@ -324,17 +286,37 @@ void nodeIngestValue(nodeInfo_t *node,
 producer_event_t producerTick(const uint32_t ts)
 {
     producer_event_t evt = {0}; /**< Zero out the return event */
+    evt.ready = false;
 
-    const subMods = nodeGetSubmoduleCount();
+
+    if (!g_node ||
+        !g_node->getSubModuleCount ||
+        !g_node->getSubModule ||
+        !g_node->getRuntime) 
+        {
+        evt.ready = false;
+        evt.error = true;
+        return evt;  // or return evt with ready = false
+    }
+
+    const uint8_t subMods = g_node->getSubModuleCount();
+    static uint8_t prod_debug_flag = 0;
 
     for (uint8_t i = 0; i < subMods; i++) {
 
-        subModule_t *sub = nodeGetSubmodule(i);
+        subModule_t *sub = g_node->getSubModule(i);
         if (!sub) continue;
 
-        runTime_t *rt = producerGetRuntime(i);
+        runTime_t *rt = &sub->runTime;
         if (!rt) continue;
 
+        // printf("[PRODLOOP] i=%u sub=%p flags=0x%02X period=%u\n",
+        //     i,
+        //     (void*)sub,
+        //     sub ? sub->producer_flags : 0,
+        //     sub ? sub->runTime.period_ms : 0);
+
+        // vTaskDelay(100 / portTICK_PERIOD_MS);
 
         /* Producer disabled? */
         if (!(sub->producer_flags & PRODUCER_FLAG_ENABLED))
@@ -345,31 +327,85 @@ producer_event_t producerTick(const uint32_t ts)
             continue;
 
         /* Time to publish? */
-        if (ts - lastProducerTick[i] < rt->period_ms)
-            continue;
+
+        static uint32_t lastDebugTs = 0;
 
 
-        /* Select value based on valueSource */
-        uint32_t value = 0;
-        switch (rt->valueSource) {
-            case VALUE_SRC_STATE:            value = rt->state; break;
-            case VALUE_SRC_ADC:              value = rt->adc_value; break;
-            case VALUE_SRC_HW_OUTPUT:        value = rt->last_hardware_output; break;
-            default:                         continue;
-        }
+
+
+        /* Retrieve value */
+        uint32_t value = rt->valueU32; 
 
         /* 
          * Change-only logic 
          * If the CHANGE_ONLY flag is set, and the current value equals the last published value, do not publish 
          */
-        if ((sub->producer_flags & PRODUCER_FLAG_CHANGE_ONLY) &&
-            (value == rt->last_published_value))
-        {
+        // if ((sub->producer_flags & PRODUCER_FLAG_CHANGE_ONLY) &&
+        //     (value == rt->last_published_value))
+        // {
+        //     continue;
+        // }
+
+        /** Determine if the input is treated as momentary */
+        bool isMomentary = (sub->config.gpioInput.flags 
+                            & INPUT_FLAG_MASK_MODE) 
+                            == INPUT_FLAG_MODE_MOMENTARY;
+
+        // uint8_t flags    = sub->config.gpioInput.flags;
+        // uint8_t modeBits = flags & INPUT_FLAG_MASK_MODE;
+
+        // if ((ts - lastDebugTs) > 100) {
+        //     lastDebugTs = ts;
+        //     printf("[PRODDBG] sub=%u ts=%u inputFlags=0x%02X isMomentary=%u period=%u flags=0x%02X valueU32=%u lastPub=%u\n",
+        //         i,
+        //         ts,
+        //         sub->config.gpioInput.flags,
+        //         isMomentary,
+        //         rt->period_ms,
+        //         sub->producer_flags,
+        //         rt->valueU32,
+        //         rt->last_published_value);
+
+        //     printf("[PRODDBG] flags=0x%02X modeBits=0x%02X MOM=0x%02X\n",
+        //         flags,
+        //         modeBits,
+        //         INPUT_MODE_MOMENTARY);
+
+        // }   
+
+        /* Check if time to publish */
+        if (ts - lastProducerTick[i] < rt->period_ms)
             continue;
+
+        if (isMomentary) {
+
+            /* Skip if not active or released (skip startup value)*/
+            if (value != MOMENTARY_ACTIVE_VALUE && value != MOMENTARY_RELEASE_VALUE) {
+                continue;
+            }
+
+            bool isReleased = (value == MOMENTARY_RELEASE_VALUE);
+
+            /* If released AND unchanged → skip */
+            if (isReleased && value == rt->last_published_value) {
+                continue;
+            }
+
+            /* If released AND changed → publish once (release event) */
+            /* If pressed (active) → always publish */
+        }
+        else {
+            /* Normal CHANGE_ONLY behavior */
+            if ((sub->producer_flags & PRODUCER_FLAG_CHANGE_ONLY) &&
+                (value == rt->last_published_value))
+            {
+                continue;
+            }
         }
 
+
         /* Update last tick */
-        lastProducerTick[i] = ts;
+        lastProducerTick[i]      = ts;
 
         /* Setup event to return */
         evt.ready                = true;   /**< Ready to publish */
@@ -385,7 +421,6 @@ producer_event_t producerTick(const uint32_t ts)
     return evt; 
 
 }
-
 
 #ifdef __cplusplus
 }
