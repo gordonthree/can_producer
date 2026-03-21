@@ -1,4 +1,5 @@
 #include "can_producer.h"
+#include <freertos/task.h> /* for vTaskDelay */
 
 #ifdef __cplusplus
 extern "C" {
@@ -257,6 +258,7 @@ producer_event_t producerTick(const uint32_t ts)
     producer_event_t evt = {0}; /**< Zero out the return event */
     evt.ready = false;
 
+
     if (!g_node ||
         !g_node->getSubModuleCount ||
         !g_node->getSubModule ||
@@ -268,15 +270,23 @@ producer_event_t producerTick(const uint32_t ts)
     }
 
     const uint8_t subMods = g_node->getSubModuleCount();
+    static uint8_t prod_debug_flag = 0;
 
     for (uint8_t i = 0; i < subMods; i++) {
 
         subModule_t *sub = g_node->getSubModule(i);
         if (!sub) continue;
 
-        runTime_t *rt = g_node->getRuntime(i);
+        runTime_t *rt = &sub->runTime;
         if (!rt) continue;
 
+        static uint32_t last_seen = 0;
+
+        if (i == 1) {
+            printf("PROD val=%u last=%u\n", rt->valueU32, rt->last_published_value);
+
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
 
         /* Producer disabled? */
         if (!(sub->producer_flags & PRODUCER_FLAG_ENABLED))
