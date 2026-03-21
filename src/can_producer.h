@@ -3,9 +3,9 @@
 #include <string.h> // for memset
 #include <stddef.h> // for NULL
 
-#include "canbus_project.h" /**< Required for nodeInfo_t, subModule_t */
+#include "canbus_project.h"    /**< Required for nodeInfo_t, subModule_t */
 // #include "node_state.h"     /**< Required for node and trackers */
-#include "can_platform.h"   /**< Required for can_msg_t */
+#include "can_platform.h"      /**< Required for can_msg_t */
 #include "submodule_types.h"   /**< Sub-module type definitions */
 
 #ifdef __cplusplus
@@ -42,6 +42,9 @@ extern uint32_t lastProducerTick[]; /**< Array of producer tick counters */
 extern bool g_producerSaveRequested;
 extern bool g_producerLoadRequested;
 extern bool g_producerMessageWaiting;
+
+extern bool gpioProdFired;
+
 
 /* ============================================================================
  *  TYPEDEFS
