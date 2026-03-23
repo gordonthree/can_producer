@@ -16,13 +16,6 @@ extern "C" {
  *  CONSTANTS
  * ========================================================================== */
 
-
-
-#define DEFAULT_PUBLISH_RATE        1000  /**< Default publish period in ms (1 Hz) */
-#define PRODUCER_PUBLISH_DISABLED   0
-
-
-
 /* Forward declarations */
 struct nodeInfo_t;              // forward declaration
 typedef struct nodeInfo_t nodeInfo_t;
