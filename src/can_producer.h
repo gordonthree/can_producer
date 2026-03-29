@@ -124,7 +124,7 @@ producer_event_t producerTick(const uint32_t ts); /**< Publish producer values b
  * ========================================================================== */
 
 typedef struct {
-    const uint8_t (*getSubModuleCount)(void);
+    uint8_t (*getSubModuleCount)(void);
     subModule_t* (*getSubModule)(uint8_t idx);
     runTime_t* (*getRuntime)(uint8_t idx);
 } producerCallbacks_t;
