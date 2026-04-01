@@ -20,13 +20,11 @@ extern "C" {
 struct nodeInfo_t;              // forward declaration
 typedef struct nodeInfo_t nodeInfo_t;
 
+
 /* ============================================================================
  *  GLOBALS
  * ========================================================================== */
 
-/* Forward declarations */
-struct nodeInfo_t;              
-typedef struct nodeInfo_t nodeInfo_t;
 
 /** Producer tick counter */
 extern uint32_t lastProducerTick[]; /**< Array of producer tick counters */
@@ -67,6 +65,7 @@ typedef enum
     VALUE_SRC_RESERVED7      /**< Reserved for future expansion */
 
 } valueSource_t;
+
 
 /* ============================================================================
  *  PRODUCER CONFIG API (CAN message handlers)

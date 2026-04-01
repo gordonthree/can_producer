@@ -46,9 +46,9 @@ void handleProducerCfg(const can_msg_t *msg)
         return;
 
     /** Pack two bytes for the 16-bit period */
-    rt->period_ms       = ((msg->data[MSG_DATA_5] << BYTE_SHIFT) & BYTE_MASK) |
-                           (msg->data[MSG_DATA_6] & BYTE_MASK); 
-    sub->producer_flags = msg->data[MSG_DATA_7];
+    sub->producer_period_ms = ((msg->data[MSG_DATA_5] << BYTE_SHIFT) & BYTE_MASK) |
+                              (msg->data[MSG_DATA_6] & BYTE_MASK); 
+    sub->producer_flags     = msg->data[MSG_DATA_7];
 
     /** Request the firmware save data to NVS */
     sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
@@ -82,10 +82,10 @@ void producerDefaultSingle(const uint8_t sub_idx)
     runTime_t   *rt  = g_node->getRuntime(sub_idx);
 
     memset(rt, 0, sizeof(runTime_t)); /* clear the producer runtime state */
-    rt->period_ms       = PRODUCER_PUBLISH_DISABLED;
-    rt->kind            = PRODUCER_KIND_NONE;
-    sub->producer_flags = PRODUCER_FLAG_NONE;
-    sub->submod_flags  |= SUBMOD_FLAG_DIRTY; /* mark the sub-module as dirty so main saves it to NVS */
+    sub->producer_period_ms = 0;      /* clear the producer period */
+    sub->producer_kind      = PRODUCER_KIND_NONE;
+    sub->producer_flags     = PRODUCER_FLAG_NONE;
+    sub->submod_flags      |= SUBMOD_FLAG_DIRTY; /* mark for NVS save */
 }
 
 /** Reset all producers to default state */
@@ -102,36 +102,39 @@ void producerDefaultAll(void)
 void producerEnable(const uint8_t sub_idx)
 {
     if (sub_idx >= MAX_SUB_MODULES)
-        return;
+        return; /* Invalid sub-module index, exit function */
 
     subModule_t *sub = g_node->getSubModule(sub_idx);
-    sub->producer_flags |= PRODUCER_FLAG_ENABLED;
+    if (!sub)  /* Submodule not found, exit function */
+        return;
+
+    /* Set the PRODUCER_FLAG_PUBLISH_ENABLED bit */
+    sub->producer_flags |= PRODUCER_FLAG_PUBLISH_ENABLED;
+    
+    /* Request firmware save data to NVS */
     sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 }
 
-/**
- * @brief Disable a producer from publishing data.
- *
- * Clear the PRODUCER_FLAG_ENABLED bit in the producer flags of the sub-module at idx.
- * This will prevent the producer from publishing data according to its configuration.
- *
- * @param sub_idx Index of the sub-module to disable.
- */
 void producerDisable(const uint8_t sub_idx)
 {
-    if (sub_idx >= MAX_SUB_MODULES)
-        return;
+    if (sub_idx >= MAX_SUB_MODULES) 
+        return; /* Invalid sub-module index, exit function */
     
     subModule_t *sub = g_node->getSubModule(sub_idx);
-    sub->producer_flags &= ~PRODUCER_FLAG_ENABLED;
-    sub->submod_flags |= SUBMOD_FLAG_DIRTY;
+    if (!sub)  /* Submodule not found, exit function */
+        return;
 
+    /* Clear the PRODUCER_FLAG_PUBLISH_ENABLED bit */
+    sub->producer_flags &= ~PRODUCER_FLAG_PUBLISH_ENABLED;
+
+    /* Request firmware save data to NVS */
+    sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 }
 
 /**
  * @brief Toggle the enabled state of a producer.
  *
- * Toggle the PRODUCER_FLAG_ENABLED bit in the producer flags of the sub-module at idx.
+ * Toggle the PRODUCER_FLAG_PUBLISH_ENABLED bit in the producer flags of the sub-module at idx.
  * This will enable or disable the producer from publishing data according to its configuration.
  *
  * @param sub_idx Index of the sub-module to toggle.
@@ -142,7 +145,7 @@ void producerToggle(const uint8_t sub_idx)
         return;
 
     subModule_t *sub = g_node->getSubModule(sub_idx);
-    sub->producer_flags ^= PRODUCER_FLAG_ENABLED;
+    sub->producer_flags ^= PRODUCER_FLAG_PUBLISH_ENABLED;
     sub->submod_flags |= SUBMOD_FLAG_DIRTY;
 
 }
@@ -157,7 +160,7 @@ void producerToggle(const uint8_t sub_idx)
 void requestProducerLoad(void)
 {
     /** set a flag and the main loop will handle the producer load request */
-    g_producerLoadRequested = true; 
+    g_producerLoadRequested = true; // not used, producer config is part of subModule[i]
 }
 
 /**
@@ -170,7 +173,7 @@ void requestProducerLoad(void)
 void requestProducerSave(void)
 {
     /** set a flag and the main loop will handle the producer save request */
-    g_producerSaveRequested = true;
+    g_producerSaveRequested = true; // not used, producer config is part of subModule[i]
 }
 
 /* ============================================================================
@@ -319,19 +322,11 @@ producer_event_t producerTick(const uint32_t ts)
         // vTaskDelay(100 / portTICK_PERIOD_MS);
 
         /* Producer disabled? */
-        if (!(sub->producer_flags & PRODUCER_FLAG_ENABLED))
-            continue;
-
-        /* Period disabled? */
-        if (rt->period_ms == PRODUCER_PUBLISH_DISABLED)
+        if (!(sub->producer_flags & PRODUCER_FLAG_ACTIVE))
             continue;
 
         /* Time to publish? */
-
         static uint32_t lastDebugTs = 0;
-
-
-
 
         /* Retrieve value */
         uint32_t value = rt->valueU32; 
@@ -374,7 +369,7 @@ producer_event_t producerTick(const uint32_t ts)
         // }   
 
         /* Check if time to publish */
-        if (ts - lastProducerTick[i] < rt->period_ms)
+        if (ts - lastProducerTick[i] < sub->producer_period_ms)
             continue;
 
         if (isMomentary) {
@@ -406,6 +401,12 @@ producer_event_t producerTick(const uint32_t ts)
 
         /* Update last tick */
         lastProducerTick[i]      = ts;
+
+        /* Publishing disabled? */
+        if (!(sub->producer_flags & PRODUCER_FLAG_PUBLISH_ENABLED)) {
+            evt.ready = false;
+            return evt;
+        }
 
         /* Setup event to return */
         evt.ready                = true;   /**< Ready to publish */
