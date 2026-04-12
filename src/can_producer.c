@@ -313,7 +313,7 @@ extern "C"
             if (!sub)
                 continue;
 
-            runTime_t *rt = &sub->runTime;
+            runTime_t *rt = g_node->getRuntime(i);
             if (!rt)
                 continue;
 
@@ -450,7 +450,7 @@ extern "C"
             return evt;
         }
 
-        runTime_t *rt = &sub->runTime;
+        runTime_t *rt = g_node->getRuntime(subIdx);
         const uint32_t value = rt->valueU32;
 
         /* Producer disabled? */
